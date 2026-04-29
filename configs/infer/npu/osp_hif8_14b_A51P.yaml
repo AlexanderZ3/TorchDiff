@@ -1,0 +1,64 @@
+model_name: "osp_next"
+pipeline_name: "t2v"
+seed: 1024
+
+prompt_txt: "assets/t2v/simple_prompts.txt"
+output_dir: "samples/hif8_A51P/osp_next_14b_single_npu"
+
+num_frames: 81
+height: 720
+width: 1280
+save_fps: 16
+batch_size: 1
+
+# [A51P] 单卡：全部并行度降为1，关闭所有CP
+fsdp_size: 1
+cp_size: 1
+skiparse_cp_size: 1
+use_context_parallel: False
+use_skiparse_context_parallel: False  # [A51P] 关键！原为True，多卡下此项+skiparse_cp_size>1会崩溃
+reshard_after_forward: Null
+explicit_prefetching_num_blocks: 0
+weight_dtype: "bf16"
+save_with_dcp_api: False
+
+model_config:
+  dim: 5120
+  ffn_dim: 13824
+  freq_dim: 256
+  in_dim: 16
+  num_heads: 40
+  num_layers: 40
+  out_dim: 16
+  text_len: 512
+  skiparse_model_type: "dual_end"
+  sparse_ratio: 2
+  num_full_blocks: 8
+  num_register_tokens: 0
+  skiparse_1d: False
+  skiparse_2d: True
+  quant: "hif8"
+  quant_attn: "hif8"
+  scale_max_forward: 15.0
+  scale_max_backward: 224.0
+  # [A51P] ** 填写 HiF8 checkpoint 路径（.pt 文件）**
+  pretrained_model_dir_or_checkpoint: "** /path/to/ema_model_state_dict.pt **"
+
+scheduler_config:
+  scheduler_name: "flow_matching"
+  num_inference_steps: 50
+  shift: 7.0
+  guidance_scale: 5.0
+
+vae_config:
+  # [A51P] ** 填写 Wan2.1 VAE 权重路径 **
+  vae_path: "** /path/to/Wan2.1_VAE.pth **"
+  dtype: "fp16"
+
+text_encoder_config:
+  text_len: 512
+  # [A51P] ** 填写 T5 encoder 权重路径（.pth 文件）**
+  checkpoint_path: "** /path/to/models_t5_umt5-xxl-enc-bf16.pth **"
+  # [A51P] ** 填写 T5 tokenizer 目录路径（含 tokenizer_config.json 的目录）**
+  text_tokenizer_path: "** /path/to/google/umt5-xxl **"
+  use_fsdp: False  # [A51P] 单卡：关闭 T5 的 FSDP 包裹，原为 True
