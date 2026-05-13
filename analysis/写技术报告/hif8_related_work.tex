@@ -1,0 +1,76 @@
+\subsection{Related Work on Fine-Grained Quantization}
+
+A central challenge in 8-bit mixed-precision training is the control of quantization
+error that arises from the inherently limited dynamic range of the FP8 formats
+(E4M3/E5M2).
+To address this challenge, a family of \emph{fine-grained quantization} strategies has
+been developed; these methods assign independent scaling factors to disjoint subsets of
+the data so that the local value-to-bit mapping can be adjusted to minimize
+quantization loss.
+The principal schemes are described below.
+
+\paragraph{Per-Token Quantization (Activations).}
+In DiT-based and large language models, activations exhibit substantial magnitude
+variation across the token dimension and are frequently affected by outlier values.
+When a single global per-tensor scaling factor is applied to an entire activation
+tensor, the outliers force the scale to be large, which compresses the majority of
+well-behaved values into a narrow and densely populated region of the FP8 grid and
+incurs severe quantization error.
+Per-token quantization mitigates this effect by assigning an independent scaling factor
+to each input token or tile, which ensures that the numerical range of every token is
+adequately covered by the FP8 format~\cite{micikevicius2022fp8}.
+Per-token scaling, however, introduces non-negligible computational overhead: prior to
+each quantization step, a global reduction along the token dimension is required to
+compute $A_{\max}$ for every token independently.
+This reduction induces a serial data dependency with the downstream matrix
+multiplication, which prevents the two operations from being overlapped and imposes
+measurable latency on the critical path, particularly for long sequences or large batch
+sizes in which the cost of the reduction grows proportionally.
+
+\paragraph{Per-Channel and Per-Block Quantization (Weights).}
+Model weights exhibit substantially different statistical distributions across output
+channels, with certain channels carrying considerably larger or smaller magnitudes than
+others.
+Per-channel quantization assigns a dedicated scale to each output channel, which
+captures channel-level distributional characteristics accurately and substantially
+reduces inter-channel quantization error.
+Per-block quantization refines this approach further by applying independent scales to
+fixed-size rectangular tiles (e.g., $128\!\times\!128$), thereby balancing
+quantization accuracy and metadata overhead.
+A block size of $128\!\times\!128$ is a common choice in practice, as it captures
+intra-matrix local distributional variation while keeping the number of scale metadata
+entries manageable.
+
+\paragraph{MXFP8 Microscaling.}
+Proposed by Rouhani~et~al.~\cite{rouhani2023microscaling} of Microsoft, NVIDIA, AMD,
+and collaborating institutions, the Microscaling FP8 (MXFP8) format adopts a finer
+quantization granularity in which every 32 consecutive elements share a single 8-bit
+microscale factor.
+Compared with per-channel and per-block schemes, the finer granularity of MXFP8
+captures local numerical fluctuations more precisely and exhibits stronger
+quantization robustness in the presence of extreme outlier distributions.
+MXFP8 has been incorporated into the Open Compute Project (OCP) specification and is
+supported by major hardware vendors.
+These advantages, however, are obtained at the cost of denser scale-metadata storage,
+more frequent memory accesses for loading and broadcasting microscales, and increased
+hardware implementation complexity.
+
+\paragraph{Precision--Overhead Trade-off.}
+All fine-grained quantization strategies improve numerical accuracy at the cost of
+increased overhead in scale-metadata management.
+Per-token, per-channel, and per-block schemes require the system to load, broadcast,
+and store a substantial volume of scale values at every training or inference
+iteration.
+These operations consume valuable memory bandwidth, increase control-logic complexity,
+and partially offset the throughput gains that 8-bit floating-point computation is
+intended to deliver.
+From a systems-engineering perspective, finer quantization granularity implies more
+fragmented metadata access patterns and higher hardware implementation cost.
+
+This system-level overhead constitutes the bottleneck that HiF8 is designed to
+circumvent.
+Owing to its wide dynamic range, which spans 38 exponent values
+(Section~\ref{sec:hif8}), HiF8 can adopt coarse per-tensor quantization while still
+attaining training accuracy comparable to the BF16 baseline, as demonstrated in our
+OSP-Next experiments, thereby simplifying the quantization implementation and
+providing tangible engineering benefits.

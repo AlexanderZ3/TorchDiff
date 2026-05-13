@@ -1,0 +1,97 @@
+\subsection{HiF8 Quantization}
+
+\subsubsection{HiF8 Data Format}
+
+HiF8 is a proprietary 8-bit floating-point format developed by Huawei.
+In contrast to conventional FP8 variants (E4M3/E5M2), which fix the exponent
+bit-width, HiF8 introduces a variable-width \emph{Dot} field that dynamically
+partitions the available bits between the exponent and the mantissa, thereby
+relaxing the intrinsic trade-off between dynamic range and representational
+precision.
+Its three core properties are summarized below.
+
+\paragraph{Wide Dynamic Range.}
+Conventional FP8-E4M3 fixes the exponent at 4~bits with a bias of 7, which yields
+a limited exponent span and frequently induces overflow or underflow in the deep
+attention layers of DiT-based generative models.
+By unifying the normal and denormal encoding modes within a single coherent
+scheme, HiF8 extends its effective exponent range to $[-22,\,15]$, covering 38
+distinct exponent values and approaching the 40-exponent coverage of FP16
+($[-24,\,15]$).
+The resulting dynamic range enables HiF8 to quantize activations and gradients
+that span several orders of magnitude without resorting to fine-grained
+per-token or per-block rescaling, which materially reduces the engineering
+complexity and memory overhead of low-precision training pipelines.
+
+\paragraph{Tapered Precision.}
+Conventional FP8 formats are constrained by a fundamental trade-off between
+precision and dynamic range: E4M3 sacrifices dynamic range to obtain higher
+mantissa precision, whereas E5M2 makes the opposite compromise, and neither
+configuration simultaneously satisfies both requirements of neural-network
+training.
+HiF8 resolves this trade-off by progressively narrowing the mantissa bit-width
+as the magnitude of a value increases: a 3-bit mantissa is preserved within the
+central exponent range $[-3,\,3]$ and is gradually reduced to a 1-bit mantissa
+at the extremes of the representable range.
+This tapered precision profile is well matched to the approximately Gaussian
+distribution of neural-network weights and activations, concentrating encoding
+capacity in the high-density region of the numerical distribution while
+relinquishing precision only at values that occur with low frequency.
+
+\paragraph{Redundancy-Free Encoding.}
+The exponent field of HiF8 employs Sign-Magnitude encoding with an implicit
+leading 1-bit in the magnitude, which ensures that the representable ranges of
+exponent fields of different widths are strictly non-overlapping and that the
+entire $[-22,\,15]$ exponent space is covered without gaps or duplicates.
+By contrast, conventional FP8 formats inherited from IEEE~754 contain redundant
+code points, including dual representations of $\pm 0$ and multiple NaN encodings,
+which waste code points within an already constrained 8-bit budget.
+In HiF8, every code point is mapped to a unique numerical value, yielding full
+encoding utilization and providing a stronger foundation for quantization accuracy
+under tight bit-width constraints.
+
+% -----------------------------------------------------------------------
+\subsubsection{Quantization Scheme}
+
+Mixed-precision training requires a \emph{scaling factor} that maps
+high-precision tensors (BF16/FP32) into the representable range of HiF8.
+Let $A_{\max} = \max|\mathbf{X}|$ denote the maximum absolute value within a
+data block $\mathbf{X}$, and let $\mathrm{HiF8}_{\max}$ denote the largest
+value representable in HiF8.
+The scaling factor and the corresponding quantization operation are defined as
+
+\begin{equation}
+  \mathrm{Scale} = \frac{\mathrm{HiF8}_{\max}}{A_{\max}},
+  \label{eq:hif8_scale}
+\end{equation}
+
+\begin{equation}
+  \hat{\mathbf{X}} = \mathrm{cast\_to\_hif8}\!\left(\mathbf{X} \times \mathrm{Scale}\right).
+  \label{eq:hif8_quant}
+\end{equation}
+
+\noindent\textbf{Current Scaling.}
+We adopt a \emph{current scaling} strategy.
+At each training iteration, the input tensor $\mathbf{X}$ is traversed to compute
+the real-time value of $A_{\max}$, from which $\mathrm{Scale}$ is derived and
+subsequently applied prior to the downstream computation (e.g., matrix multiplication).
+This procedure guarantees that the scaling factor is consistent with the actual
+data distribution at the current step and eliminates the overflow risk that would
+otherwise arise from stale statistics.
+
+\noindent\textbf{Per-Tensor Quantization Granularity.}
+Owing to the wide dynamic range of HiF8, a single per-tensor scale is sufficient
+for the entire tensor, and finer granularities such as the $128\!\times\!128$ tiles
+typically required by FP8 formats are not necessary.
+Per-tensor quantization substantially reduces the storage and memory-bandwidth
+overhead associated with scale metadata, simplifies the control logic, and
+contributes to higher end-to-end training throughput.
+
+\noindent\textbf{Experimental Results.}
+In training experiments on a DiT-based generative model (OSP-Next), the combination
+of HiF8, current scaling, and per-tensor quantization, used in conjunction with the
+Skiparse sparse-attention mechanism, yields loss curves and gradient statistics that
+closely match those of the BF16 full-precision baseline.
+These results indicate that HiF8 effectively balances numerical fidelity, training
+stability, and system efficiency, and constitutes a practically viable 8-bit
+mixed-precision solution for large-scale AIGC model training.
