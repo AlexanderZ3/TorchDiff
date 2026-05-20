@@ -29,7 +29,9 @@ model_config:
   num_layers: 40
   out_dim: 16
   text_len: 512
-  pretrained_model_dir_or_checkpoint: "/work/share1/checkpoint/Wan-AI/Wan2.1-T2V-14B"
+  # Null means do not load DiT weights. The DiT will be randomly initialized,
+  # which is useful only for launch/demo/profile, not for image quality.
+  pretrained_model_dir_or_checkpoint: null
 
 scheduler_config:
   scheduler_name: "flow_matching"

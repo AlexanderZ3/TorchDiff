@@ -1,0 +1,15 @@
+直接将这一段一起靠近git bash terminal中就好：
+
+git add .
+git add .gitignore
+git add .gitattributes
+git add --renormalize .
+git status
+
+git commit -m "add agent003 develop progress_and _Normalize line endings"
+
+git push
+
+
+
+

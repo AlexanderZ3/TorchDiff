@@ -127,12 +127,21 @@ def main(config):
     scheduler = schedulers[scheduler_config.pop("scheduler_name", "flow_matching")](**scheduler_config)
 
     pretrained_model_dir_or_checkpoint = model_config.get("pretrained_model_dir_or_checkpoint", None)
-    if pretrained_model_dir_or_checkpoint is None:
-        raise ValueError("model_config.pretrained_model_dir_or_checkpoint must be specified.")
     if isinstance(pretrained_model_dir_or_checkpoint, str) and pretrained_model_dir_or_checkpoint.startswith("**"):
         raise ValueError("Please replace the placeholder pretrained_model_dir_or_checkpoint in the A51P yaml.")
 
-    if os.path.isdir(pretrained_model_dir_or_checkpoint):
+    if pretrained_model_dir_or_checkpoint is None:
+        log_on_main_process(
+            logger,
+            "model_config.pretrained_model_dir_or_checkpoint is null; "
+            "init Wan2.1 DiT with random weights for demo/profile only.",
+        )
+        with torch.device("meta"):
+            model = models[model_name](**model_config)
+        model.to_empty(device=device)
+        set_seed(seed, device_specific=False)
+        model.reset_parameters()
+    elif os.path.isdir(pretrained_model_dir_or_checkpoint):
         log_on_main_process(logger, f"Load model from pretrained_model_dir {pretrained_model_dir_or_checkpoint}")
         model = models[model_name].from_pretrained(pretrained_model_dir_or_checkpoint)
     elif os.path.isfile(pretrained_model_dir_or_checkpoint):
